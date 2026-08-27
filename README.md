@@ -172,6 +172,8 @@ A **star schema** with two fact tables sharing conformed dimensions:
 | `_Measures` | Measures table | Central home for all DAX measures |
 | `_Waterfall Categories` | Disconnected table | Drives the activity waterfall chart |
 
+![Data Model Preview](pbi1-data-model.png)
+
 Design decisions:
 
 * **Star over snowflake.** The 15 tests and 3 categories were flattened into one dimension rather than split. At 15 rows the storage saving from normalisation is negligible, while the single filter hop is a real performance and usability gain.
@@ -293,23 +295,17 @@ Full calendar years were generated rather than only the data span, so time intel
 
 ```dax
 % Waiting at 13+ weeks =
-DIVIDE (
-    SUM ( Fact_Provider[Number waiting 13+ Weeks] ),
-    SUM ( Fact_Provider[Total Waiting List] ),
-    "-"
+DIVIDE(SUM(Fact_Provider[Number waiting 13+ Weeks]),
+      [Total Waitlist Size Provider],
+      "-"
 )
 ```
 
 ```dax
-% Diagnostic Test Waitlist Contribution =
-VAR CurrentWaitlist = SUM ( Fact_Provider[Total Waiting List] )
-VAR TotalWaitlistAllTests =
-    CALCULATE (
-        SUM ( Fact_Provider[Total Waiting List] ),
-        ALL ( Dim_Diagnostic_Test )
-    )
-RETURN
-    DIVIDE ( CurrentWaitlist, TotalWaitlistAllTests, "-" )
+% Diagnostic Test Waitlist Contribution = Divide([Avg Monthly Waitlist Provider],
+                                                CALCULATE([Avg Monthly Waitlist Provider], All(Dim_Diagnostic_Test[Diagnostic Test Name Refined])),
+                                                "-"
+)
 ```
 
 ```dax
@@ -329,8 +325,8 @@ RETURN
 ```dax
 Average Monthly Waitlist Commissioner =
 AVERAGEX (
-    VALUES ( 'Dim_Date'[Date] ),
-    CALCULATE ( SUM ( Fact_Commissioner[Total Waiting List] ) )
+    VALUES('Dim_Date'[Date]), 
+    [Total Waitlist Size Commissioner]
 )
 ```
 
@@ -354,45 +350,45 @@ The `FILTER` wrapper trims boundary months where one side of the equation does n
 **Activity and hidden demand**
 
 ```dax
-Avg Waitlist Activity =
+Avg Waitlist Activity
 AVERAGEX (
-    VALUES ( 'Dim_Date'[Year Month Sort] ),
-    CALCULATE ( SUM ( Fact_Provider[Waiting list tests / procedures (excluding planned)] ) )
+    VALUES('Dim_Date'[Date]), 
+    [Total Waitlist Activity]
 )
 
 Avg Unscheduled Activity =
 AVERAGEX (
-    VALUES ( 'Dim_Date'[Year Month Sort] ),
-    CALCULATE ( SUM ( Fact_Provider[Unscheduled tests / procedures] ) )
+    VALUES('Dim_Date'[Date]),
+    CALCULATE(SUM(Fact_Provider[Unscheduled tests / procedures]))
 )
 
 Avg Planned Activity =
 AVERAGEX (
-    VALUES ( 'Dim_Date'[Year Month Sort] ),
+    VALUES ( 'Dim_Date'[Date] ),
     CALCULATE ( SUM ( Fact_Provider[Planned tests / procedures] ) )
 )
 ```
 
 ```dax
-Additional Demand (Hidden) =
-SUM ( Fact_Provider[Unscheduled tests / procedures] )
-    + SUM ( Fact_Provider[Planned tests / procedures] )
+Avg Hidden Demand = [Avg Unscheduled Activity] + [Avg Planned Activity]
 
-Avg Additional Demand = [Avg Unscheduled Activity] + [Avg Planned Activity]
+Avg Total Activity = [Avg Waitlist Activity] + [Avg Unscheduled Activity] + [Avg Planned Activity]
 
-Avg System Activity = [Avg Waitlist Activity] + [Avg Unscheduled Activity] + [Avg Planned Activity]
-
-% Additional Demand = DIVIDE ( [Avg Additional Demand], [Avg System Activity], "-" )
+% Hidden Demand = DIVIDE (
+    CALCULATE(SUM(Fact_Provider[Unscheduled tests / procedures])) + CALCULATE(SUM(Fact_Provider[Planned tests / procedures])),
+    CALCULATE(SUM(Fact_Provider[Waiting list tests / procedures (excluding planned)])) + CALCULATE(SUM(Fact_Provider[Unscheduled tests / procedures])) + CALCULATE(SUM(Fact_Provider[Planned tests / procedures])),
+    "-"
+)
 ```
 
 ```dax
 Waterfall Total Activity =
 SWITCH (
-    SELECTEDVALUE ( '_Waterfall Categories'[Activity Type] ),
-    "1. Waitlist",    SUM ( Fact_Provider[Waiting list tests / procedures (excluding planned)] ),
-    "2. Unscheduled", SUM ( Fact_Provider[Unscheduled tests / procedures] ),
-    "3. Planned",     SUM ( Fact_Provider[Planned tests / procedures] ),
-    BLANK ()
+    SELECTEDVALUE('_Waterfall Categories'[Activity Type]),
+    "Waitlist Activity", [Avg Waitlist Activity],
+    "Unscheduled Activity", [Avg Unscheduled Activity],
+    "Planned Activity", [Avg Planned Activity],
+    BLANK()
 )
 ```
 
@@ -473,4 +469,4 @@ Unofficial analysis of publicly available NHS England DM01 data. Not affiliated 
 
 ## Project Status
 
-Completed
+Completed project 3 of 5
