@@ -216,25 +216,27 @@ Deduplicating on both columns failed, since Power Query evaluates the full row a
 
 ## DAX
 
-The model contains 20 measures in a dedicated `_Measures` table. The most significant are shown below; the full set is expandable.
+The model contains 23 measures in a dedicated `_Measures` table. The most significant are shown below; the full set is expandable.
 
 **Volume, handled as a semi-additive measure:**
 
 ```dax
-Average Monthly Waitlist =
+Avg Monthly Waitlist Provider = 
 AVERAGEX (
-    VALUES ( 'Dim_Date'[Date] ),
-    CALCULATE ( SUM ( Fact_Provider[Total Waiting List] ) )
+    VALUES('Dim_Date'[Date]), 
+    [Total Waitlist Size Provider]
 )
+
+Total Waitlist Size Provider = SUM(Fact_Provider[Total Waiting List])
 ```
 
 **Performance, recalculated from numerator and denominator rather than averaging a stored percentage:**
 
 ```dax
-% Waiting at 6+ weeks =
-DIVIDE (
-    SUM ( Fact_Provider[Number waiting 6+ Weeks] ),
-    SUM ( Fact_Provider[Total Waiting List] ),
+% Waiting at 6+ weeks = 
+DIVIDE(
+    SUM(Fact_Provider[Number waiting 6+ Weeks]),
+    [Total Waitlist Size Provider],
     "-"
 )
 ```
@@ -242,10 +244,10 @@ DIVIDE (
 **Clearance gap, comparing current activity against the previous month's outstanding waitlist:**
 
 ```dax
-Previous Month Waitlist =
-CALCULATE (
-    SUM ( Fact_Provider[Total Waiting List] ),
-    DATEADD ( 'Dim_Date'[Date], -1, MONTH )
+Previous Month Waitlist = 
+CALCULATE(
+    [Total Waitlist Size Provider],
+    DATEADD(Dim_Date[Date], -1, MONTH)
 )
 
 Clearance Gap = [Waitlist Activity] - [Previous Month Waitlist]
@@ -254,10 +256,10 @@ Clearance Gap = [Waitlist Activity] - [Previous Month Waitlist]
 **Ranking within region, which Power BI's native Top N filter cannot do:**
 
 ```dax
-Provider Rank by Region =
-RANKX (
-    ALLSELECTED ( Dim_Provider[Provider Name] ),
-    [Average Monthly Waitlist],
+Provider Rank by Region = 
+RANKX(
+    ALLSELECTED(Dim_Provider[Provider Name Refined]),
+    [Avg Monthly Waitlist Provider],
     ,
     DESC,
     Dense
@@ -328,6 +330,8 @@ AVERAGEX (
     VALUES('Dim_Date'[Date]), 
     [Total Waitlist Size Commissioner]
 )
+
+Total Waitlist Size Commissioner = SUM(Fact_Commissioner[Total Waiting List])
 ```
 
 Used only for the provider-vs-commissioner cross-border comparison, not in the infographic visuals.
@@ -374,9 +378,10 @@ Avg Hidden Demand = [Avg Unscheduled Activity] + [Avg Planned Activity]
 
 Avg Total Activity = [Avg Waitlist Activity] + [Avg Unscheduled Activity] + [Avg Planned Activity]
 
-% Hidden Demand = DIVIDE (
-    CALCULATE(SUM(Fact_Provider[Unscheduled tests / procedures])) + CALCULATE(SUM(Fact_Provider[Planned tests / procedures])),
-    CALCULATE(SUM(Fact_Provider[Waiting list tests / procedures (excluding planned)])) + CALCULATE(SUM(Fact_Provider[Unscheduled tests / procedures])) + CALCULATE(SUM(Fact_Provider[Planned tests / procedures])),
+% Hidden Demand = 
+DIVIDE (
+    [Avg Hidden Demand],
+    [Avg Total Activity],
     "-"
 )
 ```
@@ -394,7 +399,7 @@ SWITCH (
 
 Power BI's waterfall visual accepts only a single field on the Y-axis, so three separate measures could not be stacked directly. A **disconnected table** provides the category axis and a `SWITCH` measure resolves which activity stream to return.
 
-**Dynamic text**
+**KPI card generation**
 
 ```dax
 Most Popular Test =
